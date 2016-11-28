@@ -180,8 +180,29 @@ name). Under the assumptions this list provides, you “type-check” the patter
 some typ (call it t) that all the patterns in the list can have. If so, return SOME t, else return NONE.
 You must return the “most lenient” type that all the patterns can have.*)
 fun typecheck_patterns (datatyp_lst, pattern_lst) =
-	let fun match_construct_aux (s1, typ1) (s2, t, typ2) =
-			s2 = s1 andalso (case typ2 of Anything => true | _ => typ2 = typ1)
+	let fun match_tuple_aux f tup_pairs acc = (* Generate a valid tye list for 2 TupleT *)
+			case tup_pairs of
+				(a, b)::xs => (case (f [a, b]) of SOME t => match_tuple_aux f xs (acc @ [t]) | NONE => NONE)
+				| [] => SOME acc
+
+		fun match_tuple f ts lst =
+			let fun gen_tup_typ ts' tail =
+				 	case (match_tuple_aux f (ListPair.zipEq(ts, ts')) []) of
+				 		SOME t => match_tuple f t tail
+				 		| NONE => raise NoAnswer
+			in
+				(case lst of
+					Anything::xs => match_tuple f ts xs
+					(* Matching every tuple in the remaining list *)
+					| (TupleT ts2)::xs => gen_tup_typ ts2 xs
+					| [] => SOME (TupleT ts)
+					| _ => NONE)
+				handle _ => NONE (* if 2 TupleT is of unequal len or NoAnswer *)
+			end
+			
+
+		fun match_construct_aux (s1, typ1) (s2, t, typ2) =
+			s2 = s1 andalso (case typ2 of Anything => true | _ => typ2 = typ1) (*TODO*)
 
 		fun match_construct dt_lst (s, typ) =
 			let val compare_fn = match_construct_aux (s, typ)
@@ -193,10 +214,12 @@ fun typecheck_patterns (datatyp_lst, pattern_lst) =
 					| [] => raise NoAnswer
 			end
 
+		(* Given a typ list then narrow it down to one typ to match all typ in that list *)
 		fun narrow_down_type typ_lsts =
 			case typ_lsts of
 				x::y::xs => (case x of 
 								Anything => narrow_down_type (y::xs)
+								| TupleT ts => match_tuple narrow_down_type ts (y::xs)
 								| _ => if (List.all (fn z => case z of
 																Anything => true
 																| _ => z = x) (y::xs)) 
@@ -205,7 +228,8 @@ fun typecheck_patterns (datatyp_lst, pattern_lst) =
 				| x::[] => (case x of Anything => SOME Anything | _ => SOME x)
 				| [] => NONE
 
-		fun unfold_lst_ele lst = (case lst of x::[] => x | _ => raise NoAnswer)
+		(* Remove the squre braket of a one-element list *)
+		fun unfold_lst_ele lst = (case lst of x::[] => x | _ => raise NoAnswer) 
 
 		fun main_aux plst acc = 
 			case plst of
@@ -218,11 +242,11 @@ fun typecheck_patterns (datatyp_lst, pattern_lst) =
 		  						| TupleP ps => ( main_aux xs 
 		  										((TupleT(List.rev (main_aux ps [])))::acc) )
 				  				| ConstructorP (s, p) => ( main_aux xs 
-				  								(((match_construct datatyp_lst 
-				  									(s, (unfold_lst_ele (main_aux [p] []))))::acc) 
-				  								handle NoAnswer => acc) )
+				  								((match_construct datatyp_lst 
+				  									(s, (unfold_lst_ele (main_aux [p] []))))::acc) )
 			  			)
 	in
 		narrow_down_type(main_aux pattern_lst [])
+		handle NoAnswer => NONE
 	end
 	
