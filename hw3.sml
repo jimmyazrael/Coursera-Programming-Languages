@@ -180,4 +180,49 @@ name). Under the assumptions this list provides, you “type-check” the patter
 some typ (call it t) that all the patterns in the list can have. If so, return SOME t, else return NONE.
 You must return the “most lenient” type that all the patterns can have.*)
 fun typecheck_patterns (datatyp_lst, pattern_lst) =
-	1
+	let fun match_construct_aux (s1, typ1) (s2, t, typ2) =
+			s2 = s1 andalso (case typ2 of Anything => true | _ => typ2 = typ1)
+
+		fun match_construct dt_lst (s, typ) =
+			let val compare_fn = match_construct_aux (s, typ)
+			in
+				case dt_lst of
+					(s, t, typ)::xs => (if (compare_fn (s, t, typ)) 
+										then (Datatype t)
+										else match_construct xs (s, typ) )
+					| [] => raise NoAnswer
+			end
+
+		fun narrow_down_type typ_lsts =
+			case typ_lsts of
+				x::y::xs => (case x of 
+								Anything => narrow_down_type (y::xs)
+								| _ => if (List.all (fn z => case z of
+																Anything => true
+																| _ => z = x) (y::xs)) 
+									then SOME x 
+									else NONE)
+				| x::[] => (case x of Anything => SOME Anything | _ => SOME x)
+				| [] => NONE
+
+		fun unfold_lst_ele lst = (case lst of x::[] => x | _ => raise NoAnswer)
+
+		fun main_aux plst acc = 
+			case plst of
+					[] => acc
+				  	| x::xs => (case x of
+		  					  	Wildcard => main_aux xs (Anything::acc)
+		  						| Variable _ => main_aux xs (Anything::acc)
+		  						| UnitP => main_aux xs (UnitT::acc)
+		  						| ConstP _ => main_aux xs (IntT::acc)
+		  						| TupleP ps => ( main_aux xs 
+		  										((TupleT(List.rev (main_aux ps [])))::acc) )
+				  				| ConstructorP (s, p) => ( main_aux xs 
+				  								(((match_construct datatyp_lst 
+				  									(s, (unfold_lst_ele (main_aux [p] []))))::acc) 
+				  								handle NoAnswer => acc) )
+			  			)
+	in
+		narrow_down_type(main_aux pattern_lst [])
+	end
+	
