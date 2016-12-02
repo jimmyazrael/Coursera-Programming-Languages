@@ -148,21 +148,22 @@ namely NONE if the pattern does not match and SOME lst where lst is the list of 
 Note that if the value matches but the pattern has no patterns of the form Variable s, then the result
 is SOME [].*)
 fun match (value, pattern) =
-	case pattern of
-		Wildcard => SOME []
-	  | Variable s => SOME [(s, value)]
-	  | UnitP => (case value of 
-	  				Unit => SOME [] 
-	  				| _ => NONE)
-	  | ConstP x => (case value of 
-	  					Const y => if x = y then SOME [] else NONE 
-	  					| _ => NONE)
-	  | TupleP ps => (case value of 
-	  					Tuple vs => (all_answers match (ListPair.zip(vs, ps))) 
-	  					| _ => NONE)
-	  | ConstructorP (s1, pt) => (case value of 
-	  								Constructor(s2, va) => if s1 = s2 then match(va, pt) else NONE 
-	  								| _ => NONE)
+	(case pattern of
+			Wildcard => SOME []
+		  | Variable s => SOME [(s, value)]
+		  | UnitP => (case value of 
+		  				Unit => SOME [] 
+		  				| _ => NONE)
+		  | ConstP x => (case value of 
+		  					Const y => if x = y then SOME [] else NONE 
+		  					| _ => NONE)
+		  | TupleP ps => (case value of 
+		  					Tuple vs => (all_answers match (ListPair.zipEq(vs, ps))) 
+		  					| _ => NONE)
+		  | ConstructorP (s1, pt) => (case value of 
+		  								Constructor(s2, va) => if s1 = s2 then match(va, pt) else NONE 
+		  								| _ => NONE))
+	handle UnequalLengths => NONE
 
 (*Write a function first_match that takes a value and a list of patterns and returns a
 (string * valu) list option, namely NONE if no pattern in the list matches or SOME lst where
@@ -201,16 +202,18 @@ fun typecheck_patterns (datatyp_lst, pattern_lst) =
 			end
 			
 
-		fun match_construct_aux (s1, typ1) (s2, t, typ2) =
-			s2 = s1 andalso (case typ2 of Anything => true | _ => typ2 = typ1) (*TODO*)
+		fun match_construct_aux f (s1, typ1) (s2, t, typ2) =
+			s2 = s1 andalso (case typ2 of 
+								Anything => true 
+								| _ => (case (f [typ2, typ1]) of SOME t => true | NONE => false))
 
-		fun match_construct dt_lst (s, typ) =
-			let val compare_fn = match_construct_aux (s, typ)
+		fun match_construct f dt_lst (s_main, typ_main) =
+			let val compare_fn = match_construct_aux f (s_main, typ_main)
 			in
 				case dt_lst of
 					(s, t, typ)::xs => (if (compare_fn (s, t, typ)) 
 										then (Datatype t)
-										else match_construct xs (s, typ) )
+										else match_construct f xs (s_main, typ_main) )
 					| [] => raise NoAnswer
 			end
 
@@ -242,7 +245,7 @@ fun typecheck_patterns (datatyp_lst, pattern_lst) =
 		  						| TupleP ps => ( main_aux xs 
 		  										((TupleT(List.rev (main_aux ps [])))::acc) )
 				  				| ConstructorP (s, p) => ( main_aux xs 
-				  								((match_construct datatyp_lst 
+				  								((match_construct narrow_down_type datatyp_lst 
 				  									(s, (unfold_lst_ele (main_aux [p] []))))::acc) )
 			  			)
 	in
